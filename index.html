@@ -411,7 +411,7 @@
             let img = document.getElementById("prodImg").value;
             let desc = document.getElementById("prodDesc").value;
             if(!name||!price) return alert("請填寫商品名稱與價格");
-            let postData = {name,cate_id,price,stock,img,desc};
+            let postData = {name,cate_id,price,stock,img,goods_desc};
             if(id){
                 await supabase.from("products").update(postData).eq("id",id);
             }else{
@@ -433,7 +433,7 @@
             document.getElementById("prodPrice").value = item.price;
             document.getElementById("prodStock").value = item.stock;
             document.getElementById("prodImg").value = item.img||"";
-            document.getElementById("prodDesc").value = item.desc||"";
+            document.getElementById("prodDesc").value = item.goods_desc||"";
             await setProdCateSelect();
             document.getElementById("prodCate").value = item.cate_id;
             document.getElementById("prodModalTitle").innerText="編輯商品";
