@@ -3,242 +3,647 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>線上購物商城</title>
+    <title>購物商城 - Supabase完整版</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        tailwind.config={theme:{extend:{colors:{main:'#e53e3e'}}}}
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        success: '#00B42A',
+                        danger: '#F53F3F',
+                        warning: '#FF7D00'
+                    }
+                }
+            }
+        }
     </script>
     <style>
-        .cart-badge{position:relative;top:-10px;left:-8px;}
-        .product-card:hover{transform:translateY(-5px);box-shadow:0 10px 25px #0002;transition:0.3s;}
-        .modal{display:none;}
-        .modal.show{display:flex;}
+        .tab-hide { display: none; }
+        .modal { backdrop-filter: blur(4px); }
+        .scroll-hide::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body class="bg-gray-50">
-    <!-- 登入彈窗 -->
-    <div id="loginModal" class="modal fixed inset-0 bg-black/50 z-[999] items-center justify-center">
-        <div class="bg-white w-full max-w-md rounded-xl p-6">
-            <h3 class="text-xl font-bold mb-4">會員登入</h3>
-            <input type="text" id="loginAcc" placeholder="帳號" class="w-full border p-3 rounded mb-3">
-            <input type="password" id="loginPwd" placeholder="密碼" class="w-full border p-3 rounded mb-3">
-            <div class="flex gap-3 mt-4">
-                <button onclick="closeLogin()" class="flex-1 border py-2 rounded">關閉</button>
-                <button onclick="userLogin()" class="flex-1 bg-main text-white py-2 rounded">登入</button>
-            </div>
-            <p class="mt-3 text-sm text-gray-500">還沒有帳號？<a href="register.html" class="text-main">立即註冊</a></p>
-        </div>
-    </div>
+    <script>
+        // ========== 填入你的 Supabase 資訊 ==========
+        const SUPABASE_URL = "https://zexwhzgxunfnbschkizq.supabase.co";
+        const SUPABASE_ANON_KEY = "sb_publishable_OPftLOAUJFzwKZ8eK7GIXg_2LEEMMwn";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    <!-- 導覽列 -->
-    <header class="bg-white shadow sticky top-0 z-50">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <a href="index.html" class="text-2xl font-bold text-main">線上商城</a>
-            <div class="flex items-center gap-6">
-                <a href="#shop">全部商品</a>
-                <a href="#cart" class="text-xl relative">
-                    <i class="fa-solid fa-cart-shopping"></i>
-                    <span class="cart-badge bg-main text-white text-xs px-2 rounded-full" id="cartNum">0</span>
-                </a>
-                <span id="userInfo"></span>
+        // 全域變數
+        let userInfo = null;
+        let cartList = JSON.parse(localStorage.getItem("shopCart")) || [];
+        let currentTab = "home";
+    </script>
+
+    <!-- 頂部導航列 -->
+    <header class="bg-primary text-white shadow-md fixed w-full top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <h1 class="text-xl font-bold cursor-pointer" onclick="switchPage('home')">
+                <i class="fa fa-shopping-bag mr-2"></i>優選購物商城
+            </h1>
+            <div class="flex items-center gap-5">
+                <span onclick="switchPage('home')" class="cursor-pointer hover:text-gray-200">首頁</span>
+                <span onclick="switchPage('cart')" class="cursor-pointer hover:text-gray-200 relative">
+                    購物車
+                    <span id="cartNum" class="absolute -top-2 -right-3 bg-red-500 text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
+                </span>
+                <span id="loginBtn" onclick="openLoginModal()" class="cursor-pointer hover:text-gray-200">會員登入</span>
+                <span id="userName" class="hidden cursor-pointer" onclick="openUserMenu()"></span>
+                <span id="adminEntry" class="hidden bg-white text-primary px-3 py-1 rounded cursor-pointer" onclick="switchPage('admin')">商家後台</span>
             </div>
         </div>
     </header>
 
-    <!-- 輪播 -->
-    <section class="bg-gradient-to-r from-red-500 to-orange-400 text-white py-16">
-        <div class="container mx-auto px-4 text-center">
-            <h1 class="text-4xl font-bold">優質好物 輕鬆選購</h1>
-            <p class="mt-4 text-lg">快速下單｜安心出貨</p>
-            <a href="#shop" class="inline-block mt-6 bg-white text-red-500 px-8 py-3 rounded-full font-bold">立即選購</a>
-        </div>
-    </section>
+    <main class="container mx-auto pt-20 pb-10 px-4">
+        <!-- 前台首頁 -->
+        <section id="page-home" class="page-content">
+            <div class="my-6">
+                <h2 class="text-lg font-semibold mb-3">商品分類</h2>
+                <div id="cateList" class="flex flex-wrap gap-2"></div>
+            </div>
+            <h2 class="text-xl font-bold my-4">全部商品</h2>
+            <div id="productList" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+        </section>
 
-    <!-- 商品列表 -->
-    <section id="shop" class="py-16 container mx-auto px-4">
-        <h2 class="text-3xl font-bold text-center mb-10">熱門商品</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6" id="productList">
-            <div class="col-span-full text-center py-20 text-gray-500">
-                <i class="fa-solid fa-spinner fa-spin text-3xl"></i>
-                <p class="mt-2">載入商品中...</p>
+        <!-- 購物車頁面 -->
+        <section id="page-cart" class="page-content tab-hide">
+            <h2 class="text-2xl font-bold my-6">我的購物車</h2>
+            <div id="cartEmpty" class="text-center py-20 text-gray-500">
+                <i class="fa fa-shopping-cart text-5xl mb-4"></i>
+                <p>購物車空空如也，快去挑選商品吧</p>
+            </div>
+            <div id="cartBox" class="hidden">
+                <div id="cartItemList"></div>
+                <div class="bg-white p-4 rounded-lg shadow mt-4 flex justify-between items-center">
+                    <div>
+                        <p class="text-lg">總金額：<span id="cartTotal" class="text-danger font-bold text-xl">0</span> 元</p>
+                    </div>
+                    <button onclick="checkOutOrder()" class="bg-primary text-white px-6 py-2 rounded-lg">立即結帳</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 商家後台頁面 -->
+        <section id="page-admin" class="page-content tab-hide">
+            <div class="flex gap-4 border-b pb-3 mb-6 overflow-x-auto scroll-hide">
+                <button onclick="adminTab('product')" class="admin-tab px-4 py-2 rounded bg-primary text-white">商品管理</button>
+                <button onclick="adminTab('category')" class="admin-tab px-4 py-2 rounded bg-gray-200">分類管理</button>
+                <button onclick="adminTab('member')" class="admin-tab px-4 py-2 rounded bg-gray-200">會員管理</button>
+                <button onclick="adminTab('order')" class="admin-tab px-4 py-2 rounded bg-gray-200">訂單管理</button>
+            </div>
+
+            <!-- 後台-商品管理 -->
+            <div id="admin-product" class="admin-content">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">商品列表</h3>
+                    <button onclick="openProductModal()" class="bg-success text-white px-4 py-2 rounded">新增商品</button>
+                </div>
+                <div class="bg-white rounded shadow overflow-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-3 text-left">商品圖</th>
+                                <th class="p-3 text-left">商品名稱</th>
+                                <th class="p-3 text-left">分類</th>
+                                <th class="p-3 text-left">價格</th>
+                                <th class="p-3 text-left">庫存</th>
+                                <th class="p-3 text-left">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminProductList"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 後台-分類管理 -->
+            <div id="admin-category" class="admin-content tab-hide">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">商品分類</h3>
+                    <button onclick="openCateModal()" class="bg-success text-white px-4 py-2 rounded">新增分類</button>
+                </div>
+                <div id="adminCateList" class="bg-white rounded shadow p-4"></div>
+            </div>
+
+            <!-- 後台-會員管理 -->
+            <div id="admin-member" class="admin-content tab-hide">
+                <h3 class="text-xl font-bold mb-4">會員列表</h3>
+                <div class="bg-white rounded shadow overflow-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-3 text-left">信箱</th>
+                                <th class="p-3 text-left">註冊時間</th>
+                                <th class="p-3 text-left">狀態</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminMemberList"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 後台-訂單管理 -->
+            <div id="admin-order" class="admin-content tab-hide">
+                <h3 class="text-xl font-bold mb-4">全部訂單</h3>
+                <div class="bg-white rounded shadow overflow-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-3 text-left">訂單編號</th>
+                                <th class="p-3 text-left">會員</th>
+                                <th class="p-3 text-left">金額</th>
+                                <th class="p-3 text-left">狀態</th>
+                                <th class="p-3 text-left">下單時間</th>
+                                <th class="p-3 text-left">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminOrderList"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 登入註冊彈窗 -->
+    <div id="loginModal" class="fixed inset-0 bg-black/50 modal z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg w-full max-w-md p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="loginTitle" class="text-xl font-bold">會員登入</h3>
+                <i class="fa fa-times cursor-pointer text-xl" onclick="closeLoginModal()"></i>
+            </div>
+            <div class="flex gap-3 mb-5">
+                <button id="tabLogin" onclick="switchLoginTab('login')" class="flex-1 py-2 rounded bg-primary text-white">登入</button>
+                <button id="tabReg" onclick="switchLoginTab('reg')" class="flex-1 py-2 rounded bg-gray-200">註冊</button>
+            </div>
+            <div id="loginForm">
+                <input type="email" id="loginEmail" placeholder="輸入信箱" class="w-full border p-3 rounded mb-3">
+                <input type="password" id="loginPwd" placeholder="輸入密碼" class="w-full border p-3 rounded mb-4">
+                <button onclick="userLogin()" class="w-full bg-primary text-white py-3 rounded">登入</button>
+            </div>
+            <div id="regForm" class="tab-hide">
+                <input type="email" id="regEmail" placeholder="註冊信箱" class="w-full border p-3 rounded mb-3">
+                <input type="password" id="regPwd" placeholder="設定密碼" class="w-full border p-3 rounded mb-4">
+                <button onclick="userRegister()" class="w-full bg-success text-white py-3 rounded">立即註冊</button>
             </div>
         </div>
-    </section>
+    </div>
 
-    <!-- 購物車 -->
-    <section id="cart" class="py-16 bg-white">
-        <div class="container mx-auto px-4">
-            <h2 class="text-3xl font-bold text-center mb-10">我的購物車</h2>
-            <div id="cartBox">
-                <p class="text-center text-gray-500 py-10">購物車暫無商品</p>
+    <!-- 商品新增/編輯彈窗 -->
+    <div id="productModal" class="fixed inset-0 bg-black/50 modal z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="prodModalTitle" class="text-xl font-bold">新增商品</h3>
+                <i class="fa fa-times cursor-pointer text-xl" onclick="closeProductModal()"></i>
             </div>
-            <div class="max-w-xl mx-auto mt-10 bg-gray-50 p-6 rounded-lg hidden" id="orderForm">
-                <h3 class="text-xl font-bold mb-4">填寫訂單資料</h3>
-                <input type="text" id="userName" placeholder="真實姓名" class="w-full border p-3 rounded mb-3">
-                <input type="text" id="userPhone" placeholder="聯絡電話" class="w-full border p-3 rounded mb-3">
-                <textarea id="userAddr" placeholder="收件地址" class="w-full border p-3 rounded mb-3"></textarea>
-                <p class="text-lg font-bold mb-4">總金額：<span id="totalMoney">0</span> 元</p>
-                <button onclick="submitOrder()" class="w-full bg-main text-white py-3 rounded font-bold">提交訂單</button>
+            <input type="hidden" id="editProdId">
+            <div class="mb-3">
+                <label>商品名稱</label>
+                <input type="text" id="prodName" class="w-full border p-2 rounded mt-1">
             </div>
+            <div class="mb-3">
+                <label>商品分類</label>
+                <select id="prodCate" class="w-full border p-2 rounded mt-1"></select>
+            </div>
+            <div class="mb-3">
+                <label>商品價格</label>
+                <input type="number" id="prodPrice" class="w-full border p-2 rounded mt-1">
+            </div>
+            <div class="mb-3">
+                <label>庫存數量</label>
+                <input type="number" id="prodStock" class="w-full border p-2 rounded mt-1">
+            </div>
+            <div class="mb-3">
+                <label>商品圖片網址</label>
+                <input type="text" id="prodImg" class="w-full border p-2 rounded mt-1">
+            </div>
+            <div class="mb-4">
+                <label>商品介紹</label>
+                <textarea id="prodDesc" class="w-full border p-2 rounded mt-1"></textarea>
+            </div>
+            <button onclick="saveProduct()" class="w-full bg-primary text-white py-2 rounded">儲存商品</button>
         </div>
-    </section>
+    </div>
 
-    <footer class="bg-gray-800 text-white py-10">
-        <div class="container mx-auto px-4 text-center">
-            <p>© 2026 購物商城 | 後台管理 <a href="admin.html" class="text-orange-400">商家後台</a></p>
+    <!-- 分類新增彈窗 -->
+    <div id="cateModal" class="fixed inset-0 bg-black/50 modal z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg w-full max-w-sm p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">新增分類</h3>
+                <i class="fa fa-times cursor-pointer text-xl" onclick="closeCateModal()"></i>
+            </div>
+            <input type="hidden" id="editCateId">
+            <input type="text" id="cateName" placeholder="輸入分類名稱" class="w-full border p-3 rounded mb-4">
+            <button onclick="saveCategory()" class="w-full bg-primary text-white py-3 rounded w-full">儲存</button>
         </div>
-    </footer>
+    </div>
+
+    <!-- 訂單明細彈窗 -->
+    <div id="orderDetailModal" class="fixed inset-0 bg-black/50 modal z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">訂單明細</h3>
+                <i class="fa fa-times cursor-pointer text-xl" onclick="closeOrderDetail()"></i>
+            </div>
+            <div id="orderDetailContent"></div>
+        </div>
+    </div>
 
     <script>
-        const SUPABASE_URL = "https://zexwhzgxunfnbschkizq.supabase.co";
-        const SUPABASE_KEY = "sb_publishable_OPftLOAUJFzwKZ8eK7GIXg_2LEEMMwn";
-        const { createClient } = supabase;
-        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        let cart = JSON.parse(localStorage.getItem("shopCart")) || [];
-        let loginUser = JSON.parse(localStorage.getItem("shopUser")) || null;
-
-        window.onload = function(){
-            checkLoginStatus();
-            loadProducts();
-            renderCartNum();
-            renderCart();
+        // ========== 頁面切換 ==========
+        function switchPage(page){
+            document.querySelectorAll(".page-content").forEach(el=>el.classList.add("tab-hide"));
+            document.getElementById(`page-${page}`).classList.remove("tab-hide");
+            currentTab = page;
+            if(page==="home") getProductList(),getCategoryList();
+            if(page==="cart") renderCart();
+            if(page==="admin"){
+                if(!userInfo) return alert("請先登入會員");
+                adminTab("product");
+                loadAdminData();
+            }
+        }
+        function adminTab(tab){
+            document.querySelectorAll(".admin-content").forEach(el=>el.classList.add("tab-hide"));
+            document.getElementById(`admin-${tab}`).classList.remove("tab-hide");
+            document.querySelectorAll(".admin-tab").forEach(btn=>{
+                btn.classList.remove("bg-primary","text-white");
+                btn.classList.add("bg-gray-200");
+            });
+            event.target.classList.add("bg-primary","text-white");
+            event.target.classList.remove("bg-gray-200");
         }
 
-        // 登入狀態判斷
-        function checkLoginStatus(){
-            const dom = document.getElementById("userInfo");
-            if(loginUser){
-                dom.innerHTML = `<span class="mr-2">${loginUser.nickname||loginUser.account}</span>
-                <button onclick="logout()" class="text-red-500">登出</button>`;
+        // ========== 會員登入註冊 ==========
+        function openLoginModal(){document.getElementById("loginModal").classList.remove("hidden")}
+        function closeLoginModal(){document.getElementById("loginModal").classList.add("hidden")}
+        function switchLoginTab(type){
+            if(type==="login"){
+                document.getElementById("loginForm").classList.remove("tab-hide");
+                document.getElementById("regForm").classList.add("tab-hide");
+                document.getElementById("tabLogin").classList.add("bg-primary","text-white");
+                document.getElementById("tabReg").classList.remove("bg-primary","text-white");
+                document.getElementById("tabReg").classList.add("bg-gray-200");
             }else{
-                dom.innerHTML = `<button onclick="openLogin()" class="bg-main text-white px-4 py-1 rounded">會員登入</button>`;
+                document.getElementById("regForm").classList.remove("tab-hide");
+                document.getElementById("loginForm").classList.add("tab-hide");
+                document.getElementById("tabReg").classList.add("bg-primary","text-white");
+                document.getElementById("tabLogin").classList.remove("bg-primary","text-white");
+                document.getElementById("tabLogin").classList.add("bg-gray-200");
             }
         }
-        function openLogin(){document.getElementById("loginModal").classList.add("show");}
-        function closeLogin(){document.getElementById("loginModal").classList.remove("show");}
-
-        // 會員登入
+        async function userRegister(){
+            let email = document.getElementById("regEmail").value.trim();
+            let pwd = document.getElementById("regPwd").value.trim();
+            if(!email||!pwd) return alert("請填寫完整資料");
+            let {data,error} = await supabase.auth.signUp({email,password:pwd});
+            if(error) return alert(error.message);
+            alert("註冊成功，請前往信箱驗證或直接登入");
+            switchLoginTab("login");
+        }
         async function userLogin(){
-            let acc = document.getElementById("loginAcc").value.trim();
+            let email = document.getElementById("loginEmail").value.trim();
             let pwd = document.getElementById("loginPwd").value.trim();
-            if(!acc||!pwd) return alert("請輸入帳號密碼");
-            const {data,error} = await supabase.from("users").select("*").eq("account",acc).eq("password",pwd).single();
-            if(error) return alert("帳號密碼錯誤");
-            localStorage.setItem("shopUser",JSON.stringify(data));
-            loginUser = data;
-            closeLogin();
-            checkLoginStatus();
+            if(!email||!pwd) return alert("請輸入帳號密碼");
+            let {data,error} = await supabase.auth.signInWithPassword({email,password:pwd});
+            if(error) return alert(error.message);
+            userInfo = data.user;
+            localStorage.setItem("shopUser",JSON.stringify(userInfo));
+            closeLoginModal();
+            refreshUserStatus();
             alert("登入成功");
-            location.reload();
         }
-        function logout(){
+        function refreshUserStatus(){
+            let user = JSON.parse(localStorage.getItem("shopUser"));
+            if(user){
+                userInfo = user;
+                document.getElementById("loginBtn").classList.add("hidden");
+                document.getElementById("userName").classList.remove("hidden");
+                document.getElementById("userName").innerText = user.email;
+                document.getElementById("adminEntry").classList.remove("hidden");
+            }else{
+                userInfo = null;
+                document.getElementById("loginBtn").classList.remove("hidden");
+                document.getElementById("userName").classList.add("hidden");
+                document.getElementById("adminEntry").classList.add("hidden");
+            }
+        }
+        function logoutUser(){
             localStorage.removeItem("shopUser");
-            loginUser=null;
-            checkLoginStatus();
-            alert("已登出");
+            userInfo=null;
+            refreshUserStatus();
+            switchPage("home");
         }
 
-        // 載入商品
-        async function loadProducts(){
-            const {data,error} = await supabase.from("products").select("*");
-            if(error){
-                document.getElementById("productList").innerHTML = `<p class="text-red-500 col-span-full text-center">商品載入失敗</p>`;
-                return;
-            }
-            let html = "";
+        // ========== 分類接口 ==========
+        async function getCategoryList(){
+            let {data} = await supabase.from("categories").select("*");
+            let html = `<span class="px-3 py-1 border rounded cursor-pointer hover:bg-primary hover:text-white" onclick="filterProduct('all')">全部</span>`;
             data.forEach(item=>{
+                html += `<span class="px-3 py-1 border rounded cursor-pointer hover:bg-primary hover:text-white" onclick="filterProduct('${item.id}')">${item.name}</span>`;
+            });
+            document.getElementById("cateList").innerHTML = html;
+            return data;
+        }
+        async function saveCategory(){
+            let id = document.getElementById("editCateId").value;
+            let name = document.getElementById("cateName").value.trim();
+            if(!name) return alert("請輸入分類名稱");
+            if(id){
+                await supabase.from("categories").update({name}).eq("id",id);
+            }else{
+                await supabase.from("categories").insert({name});
+            }
+            closeCateModal();
+            loadAdminData();
+            getCategoryList();
+        }
+        async function delCategory(id){
+            if(!confirm("確定刪除此分類？"))return;
+            await supabase.from("categories").delete().eq("id",id);
+            loadAdminData();
+            getCategoryList();
+        }
+        function openCateModal(){
+            document.getElementById("editCateId").value="";
+            document.getElementById("cateName").value="";
+            document.getElementById("cateModal").classList.remove("hidden");
+        }
+        function closeCateModal(){document.getElementById("cateModal").classList.add("hidden")}
+
+        // ========== 商品接口 ==========
+        let allProductData = [];
+        async function getProductList(){
+            let {data} = await supabase.from("products").select("*,categories(name)");
+            allProductData = data;
+            renderProduct(data);
+        }
+        function renderProduct(list){
+            let html = "";
+            list.forEach(item=>{
                 html += `
-                <div class="product-card bg-white rounded-lg overflow-hidden shadow transition-all duration-300">
-                    <img src="${item.image||'https://picsum.photos/400/300'}" class="w-full h-48 object-cover">
-                    <div class="p-4">
-                        <h3 class="font-bold text-lg">${item.name}</h3>
-                        <p class="text-main text-xl font-bold mt-2">NT$ ${item.price}</p>
-                        <p class="text-gray-400 text-sm mt-1">庫存：${item.stock}</p>
-                        <button onclick="addCart('${item.id}','${item.name}',${item.price},'${item.image||''}')"
-                        class="w-full mt-4 bg-main text-white py-2 rounded">加入購物車</button>
-                    </div>
+                <div class="bg-white rounded-lg shadow p-3">
+                    <img src="${item.img||'https://picsum.photos/300/300'}" class="w-full h-48 object-cover rounded">
+                    <h4 class="font-bold mt-2">${item.name}</h4>
+                    <p class="text-gray-500 text-sm">${item.categories?.name||"未分類"}</p>
+                    <p class="text-danger font-bold text-lg mt-2">NT$${item.price}</p>
+                    <p class="text-sm text-gray-400">庫存:${item.stock}</p>
+                    <button onclick="addCart(${item.id})" class="w-full mt-3 bg-primary text-white py-2 rounded">加入購物車</button>
                 </div>
-                `
-            })
+                `;
+            });
             document.getElementById("productList").innerHTML = html;
         }
-
-        // 購物車邏輯
-        function addCart(id,name,price,img){
-            let find = cart.find(v=>v.id===id);
-            if(find) find.num+=1;
-            else cart.push({id,name,price,img,num:1});
-            saveCart();renderCartNum();renderCart();alert("已加入購物車");
+        function filterProduct(cid){
+            if(cid==="all") return renderProduct(allProductData);
+            let filter = allProductData.filter(v=>v.cate_id==cid);
+            renderProduct(filter);
         }
-        function saveCart(){localStorage.setItem("shopCart",JSON.stringify(cart));}
-        function renderCartNum(){
-            let total = cart.reduce((s,i)=>s+i.num,0);
-            document.getElementById("cartNum").innerText=total;
+        async function saveProduct(){
+            let id = document.getElementById("editProdId").value;
+            let name = document.getElementById("prodName").value;
+            let cate_id = document.getElementById("prodCate").value;
+            let price = Number(document.getElementById("prodPrice").value);
+            let stock = Number(document.getElementById("prodStock").value);
+            let img = document.getElementById("prodImg").value;
+            let desc = document.getElementById("prodDesc").value;
+            if(!name||!price) return alert("請填寫商品名稱與價格");
+            let postData = {name,cate_id,price,stock,img,desc};
+            if(id){
+                await supabase.from("products").update(postData).eq("id",id);
+            }else{
+                await supabase.from("products").insert(postData);
+            }
+            closeProductModal();
+            loadAdminData();
+            getProductList();
+        }
+        async function delProduct(id){
+            if(!confirm("確定刪除商品？"))return;
+            await supabase.from("products").delete().eq("id",id);
+            loadAdminData();
+            getProductList();
+        }
+        async function editProduct(item){
+            document.getElementById("editProdId").value = item.id;
+            document.getElementById("prodName").value = item.name;
+            document.getElementById("prodPrice").value = item.price;
+            document.getElementById("prodStock").value = item.stock;
+            document.getElementById("prodImg").value = item.img||"";
+            document.getElementById("prodDesc").value = item.desc||"";
+            await setProdCateSelect();
+            document.getElementById("prodCate").value = item.cate_id;
+            document.getElementById("prodModalTitle").innerText="編輯商品";
+            document.getElementById("productModal").classList.remove("hidden");
+        }
+        async function openProductModal(){
+            document.getElementById("editProdId").value="";
+            document.getElementById("prodName").value="";
+            document.getElementById("prodPrice").value="";
+            document.getElementById("prodStock").value="";
+            document.getElementById("prodImg").value="";
+            document.getElementById("prodDesc").value="";
+            document.getElementById("prodModalTitle").innerText="新增商品";
+            await setProdCateSelect();
+            document.getElementById("productModal").classList.remove("hidden");
+        }
+        async function setProdCateSelect(){
+            let cate = await getCategoryList();
+            let opt = "";
+            cate.forEach(c=>opt+=`<option value="${c.id}">${c.name}</option>`);
+            document.getElementById("prodCate").innerHTML = opt;
+        }
+        function closeProductModal(){document.getElementById("productModal").classList.add("hidden")}
+
+        // ========== 購物車邏輯 ==========
+        function addCart(pid){
+            let goods = allProductData.find(v=>v.id===pid);
+            if(!goods)return;
+            let has = cartList.find(v=>v.pid===pid);
+            if(has) has.num++;
+            else cartList.push({pid,name:goods.name,price:goods.price,img:goods.img,num:1});
+            saveCart();
+            alert("已加入購物車");
+        }
+        function saveCart(){
+            localStorage.setItem("shopCart",JSON.stringify(cartList));
+            document.getElementById("cartNum").innerText = cartList.reduce((s,v)=>s+v.num,0);
         }
         function renderCart(){
-            if(cart.length===0){
-                document.getElementById("cartBox").innerHTML = `<p class="text-center text-gray-500 py-10">購物車暫無商品</p>`;
-                document.getElementById("orderForm").classList.add("hidden");
+            if(cartList.length===0){
+                document.getElementById("cartEmpty").classList.remove("hidden");
+                document.getElementById("cartBox").classList.add("hidden");
                 return;
             }
-            let html="",total=0;
-            cart.forEach((item,idx)=>{
-                total += item.price*item.num;
+            document.getElementById("cartEmpty").classList.add("hidden");
+            document.getElementById("cartBox").classList.remove("hidden");
+            let html = "";
+            let total = 0;
+            cartList.forEach((item,idx)=>{
+                let sub = item.price*item.num;
+                total += sub;
                 html += `
-                <div class="flex items-center border-b py-4 gap-4">
+                <div class="bg-white p-4 rounded flex items-center gap-4 mb-3">
                     <img src="${item.img||'https://picsum.photos/100/100'}" class="w-20 h-20 object-cover rounded">
                     <div class="flex-1">
                         <h4 class="font-bold">${item.name}</h4>
-                        <p class="text-main">NT$ ${item.price}</p>
+                        <p class="text-danger">NT$${item.price}</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="changeNum(${idx},-1)" class="w-8 h-8 border rounded">-</button>
+                        <button onclick="cartMinus(${idx})" class="w-7 h-7 border rounded">-</button>
                         <span>${item.num}</span>
-                        <button onclick="changeNum(${idx},1)" class="w-8 h-8 border rounded">+</button>
+                        <button onclick="cartPlus(${idx})" class="w-7 h-7 border rounded">+</button>
                     </div>
-                    <button onclick="delCart(${idx})" class="text-red-500"><i class="fa-solid fa-trash"></i></button>
+                    <span class="w-20 text-right font-bold">${sub}元</span>
+                    <i class="fa fa-trash text-red-500 cursor-pointer" onclick="cartDel(${idx})"></i>
                 </div>
-                `
-            })
-            document.getElementById("cartBox").innerHTML=html;
-            document.getElementById("totalMoney").innerText=total;
-            document.getElementById("orderForm").classList.remove("hidden");
+                `;
+            });
+            document.getElementById("cartItemList").innerHTML = html;
+            document.getElementById("cartTotal").innerText = total;
         }
-        function changeNum(idx,t){
-            cart[idx].num+=t;
-            if(cart[idx].num<=0) cart.splice(idx,1);
-            saveCart();renderCartNum();renderCart();
+        function cartPlus(i){cartList[i].num++;saveCart();renderCart()}
+        function cartMinus(i){
+            if(cartList[i].num<=1) return;
+            cartList[i].num--;saveCart();renderCart();
         }
-        function delCart(idx){
-            cart.splice(idx,1);
-            saveCart();renderCartNum();renderCart();
+        function cartDel(i){cartList.splice(i,1);saveCart();renderCart()}
+        async function checkOutOrder(){
+            if(!userInfo) return alert("請先登入會員");
+            if(cartList.length===0) return alert("購物車無商品");
+            let total = cartList.reduce((s,v)=>s+v.price*v.num,0);
+            let orderNo = "ORD"+Date.now();
+            // 建立訂單
+            let {data:orderRes} = await supabase.from("orders").insert({
+                order_no:orderNo,
+                user_id:userInfo.id,
+                total_price:total,
+                status:"pending"
+            }).select();
+            let orderId = orderRes[0].id;
+            // 建立訂單明細
+            let detailList = cartList.map(item=>({
+                order_id:orderId,
+                product_id:item.pid,
+                product_name:item.name,
+                price:item.price,
+                num:item.num
+            }));
+            await supabase.from("order_items").insert(detailList);
+            alert("下單成功！訂單編號："+orderNo);
+            cartList=[];saveCart();switchPage("home");
         }
 
-        // 提交訂單
-        async function submitOrder(){
-            if(!loginUser) return alert("請先登入會員");
-            let name = document.getElementById("userName").value.trim();
-            let phone = document.getElementById("userPhone").value.trim();
-            let addr = document.getElementById("userAddr").value.trim();
-            let total = parseInt(document.getElementById("totalMoney").innerText);
-            if(!name||!phone||!addr) return alert("請填寫完整資料");
-            const {error} = await supabase.from("orders").insert([{
-                user_id:loginUser.id,
-                username:name,
-                phone:phone,
-                address:addr,
-                total_price:total,
-                items:cart
-            }])
-            if(error) return alert("訂單失敗："+error.message);
-            alert("下單成功！");
-            cart=[];saveCart();renderCartNum();renderCart();
-            document.getElementById("userName").value="";
-            document.getElementById("userPhone").value="";
-            document.getElementById("userAddr").value="";
+        // ========== 後台載入所有數據 ==========
+        async function loadAdminData(){
+            await renderAdminProduct();
+            await renderAdminCate();
+            await renderAdminMember();
+            await renderAdminOrder();
+        }
+        async function renderAdminProduct(){
+            let {data} = await supabase.from("products").select("*,categories(name)");
+            let html="";
+            data.forEach(item=>{
+                html += `
+                <tr class="border-t">
+                    <td class="p-3"><img src="${item.img||''}" class="w-12 h-12 object-cover rounded"></td>
+                    <td class="p-3">${item.name}</td>
+                    <td class="p-3">${item.categories?.name||"未分類"}</td>
+                    <td class="p-3">${item.price}</td>
+                    <td class="p-3">${item.stock}</td>
+                    <td class="p-3">
+                        <button onclick='editProduct(${JSON.stringify(item).replace(/'/g,"")})' class="text-primary mr-2">編輯</button>
+                        <button onclick="delProduct(${item.id})" class="text-danger">刪除</button>
+                    </td>
+                </tr>
+                `;
+            });
+            document.getElementById("adminProductList").innerHTML = html;
+        }
+        async function renderAdminCate(){
+            let {data} = await supabase.from("categories").select("*");
+            let html="";
+            data.forEach(item=>{
+                html += `
+                <div class="flex justify-between items-center border-b py-2">
+                    <span>${item.name}</span>
+                    <div>
+                        <button onclick="editCate(${item.id},'${item.name}')" class="text-primary mr-3">編輯</button>
+                        <button onclick="delCategory(${item.id})" class="text-danger">刪除</button>
+                    </div>
+                </div>
+                `;
+            });
+            document.getElementById("adminCateList").innerHTML = html;
+        }
+        function editCate(id,name){
+            document.getElementById("editCateId").value=id;
+            document.getElementById("cateName").value=name;
+            document.getElementById("cateModal").classList.remove("hidden");
+        }
+        async function renderAdminMember(){
+            let {data} = await supabase.auth.admin.listUsers();
+            let html="";
+            data.users.forEach(u=>{
+                html += `
+                <tr class="border-t">
+                    <td class="p-3">${u.email}</td>
+                    <td class="p-3">${new Date(u.created_at).toLocaleString()}</td>
+                    <td class="p-3 text-green-500">正常</td>
+                </tr>
+                `;
+            });
+            document.getElementById("adminMemberList").innerHTML = html;
+        }
+        async function renderAdminOrder(){
+            let {data} = await supabase.from("orders").select("*,users(email)").order("created_at",{asc:false});
+            let html="";
+            data.forEach(item=>{
+                let statusText = item.status==="pending"?"待發貨":"已完成";
+                html += `
+                <tr class="border-t">
+                    <td class="p-3">${item.order_no}</td>
+                    <td class="p-3">${item.users?.email||"未知會員"}</td>
+                    <td class="p-3">${item.total_price}元</td>
+                    <td class="p-3">${statusText}</td>
+                    <td class="p-3">${new Date(item.created_at).toLocaleString()}</td>
+                    <td class="p-3">
+                        <button onclick="showOrderDetail(${item.id})" class="text-primary">查看明細</button>
+                    </td>
+                </tr>
+                `;
+            });
+            document.getElementById("adminOrderList").innerHTML = html;
+        }
+        async function showOrderDetail(oid){
+            let {data:order} = await supabase.from("orders").select("*").eq("id",oid).single();
+            let {data:items} = await supabase.from("order_items").select("*").eq("order_id",oid);
+            let html = `
+                <p class="mb-2">訂單編號：${order.order_no}</p>
+                <p class="mb-2">下單時間：${new Date(order.created_at).toLocaleString()}</p>
+                <p class="mb-3">訂單總金額：${order.total_price} 元</p>
+                <hr class="my-3">
+                <h4 class="font-bold mb-2">購買商品</h4>
+            `;
+            items.forEach(i=>{
+                html += `<div class="flex justify-between py-1 border-b">
+                    <span>${i.product_name} x${i.num}</span>
+                    <span>${i.price*i.num}元</span>
+                </div>`;
+            });
+            document.getElementById("orderDetailContent").innerHTML = html;
+            document.getElementById("orderDetailModal").classList.remove("hidden");
+        }
+        function closeOrderDetail(){document.getElementById("orderDetailModal").classList.add("hidden")}
+
+        // 初始化執行
+        window.onload = function(){
+            refreshUserStatus();
+            switchPage("home");
         }
     </script>
 </body>
