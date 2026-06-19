@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>會員註冊</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <h2 class="text-2xl font-bold text-center mb-6">會員免費註冊</h2>
+        <input type="text" id="regAcc" placeholder="設定登入帳號" class="w-full border p-3 rounded mb-3">
+        <input type="password" id="regPwd" placeholder="設定登入密碼" class="w-full border p-3 rounded mb-3">
+        <input type="text" id="regNick" placeholder="暱稱" class="w-full border p-3 rounded mb-3">
+        <input type="text" id="regPhone" placeholder="聯絡電話" class="w-full border p-3 rounded mb-3">
+        <textarea id="regAddr" placeholder="預設收件地址" class="w-full border p-3 rounded mb-4"></textarea>
+        <button onclick="userRegister()" class="w-full bg-red-500 text-white py-3 rounded font-bold">立即註冊</button>
+        <p class="text-center mt-4"><a href="index.html" class="text-red-500">返回登入</a></p>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://jbyvwgugkvnuggwxxeqk.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_-iXsLlQwcN7MDQRF6qh4iA_a15CGAMs";
+        const { createClient } = supabase;
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function userRegister(){
+            let acc = document.getElementById("regAcc").value.trim();
+            let pwd = document.getElementById("regPwd").value.trim();
+            let nick = document.getElementById("regNick").value.trim();
+            let phone = document.getElementById("regPhone").value.trim();
+            let addr = document.getElementById("regAddr").value.trim();
+            if(!acc||!pwd) return alert("帳號密碼不可空白");
+            const {error} = await supabase.from("users").insert([{
+                account:acc,
+                password:pwd,
+                nickname:nick,
+                phone:phone,
+                address:addr,
+                role:"user"
+            }])
+            if(error) return alert("註冊失敗："+error.message);
+            alert("註冊成功！請前往登入");
+            location.href="index.html";
+        }
+    </script>
+</body>
+</html>
