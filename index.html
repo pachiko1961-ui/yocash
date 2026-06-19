@@ -24,7 +24,7 @@
         .cate-tag:hover{background:#165DFF;color:#fff;border-color:#165DFF;}
         .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:22px;}
         .product-card{background:#fff;border-radius:6px;box-shadow:0 2px 8px #0001;padding:15px;}
-        .product-img{width:100%;height:165px;object-fit:cover;border-radius:4px;}
+        .product-img{width:100%;height:165px;object-fit:cover;border-radius:4px;background:#eee;}
         .product-name{font-weight:bold;margin:10px 0 5px;}
         .product-cate{font-size:13px;color:#777;}
         .product-price{color:#f53f3f;font-size:18px;font-weight:bold;margin:8px 0;}
@@ -32,7 +32,7 @@
         .cart-empty{text-align:center;padding:80px 0;color:#999;}
         .cart-empty i{font-size:55px;margin-bottom:15px;}
         .cart-item{background:#fff;padding:15px;border-radius:6px;margin-bottom:12px;display:flex;align-items:center;gap:15px;}
-        .cart-img{width:80px;height:80px;object-fit:cover;border-radius:4px;}
+        .cart-img{width:80px;height:80px;object-fit:cover;border-radius:4px;background:#eee;}
         .num-btn{width:28px;height:28px;border:1px solid #ddd;background:#fff;cursor:pointer;}
         .total-bar{background:#fff;padding:18px;border-radius:6px;margin-top:15px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
         .checkout{background:#165DFF;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;}
@@ -215,6 +215,9 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let userInfo = null;
 let cartList = [];
 let allProductData = [];
+// 統一使用穩定無404預設圖
+const DEF_IMG = "https://picsum.photos/300/300";
+const DEF_SMALL_IMG = "https://picsum.photos/100/100";
 
 // 安全更新數量角標
 function countCartTotal(){
@@ -334,7 +337,15 @@ async function getProductList(){
 function renderProduct(list){
     let html="";
     list.forEach(i=>{
-        html+='<div class="product-card"><img class="product-img" src="'+(i.img||'https://picsum.photos/300/300')+'"><div class="product-name">'+i.name+'</div><div class="product-cate">'+(i.categories?.name||'未分類')+'</div><div class="product-price">NT$'+i.price+'</div><div style="font-size:13px;color:#888;">庫存：'+i.stock+'</div><button class="add-cart" onclick="addGoodsToCart('+i.id+')">加入購物車</button></div>';
+        let img = i.img ? i.img : DEF_IMG;
+        html+=`<div class="product-card">
+            <img class="product-img" src="${img}" onerror="this.src='${DEF_IMG}'">
+            <div class="product-name">${i.name}</div>
+            <div class="product-cate">${i.categories?.name||'未分類'}</div>
+            <div class="product-price">NT$${i.price}</div>
+            <div style="font-size:13px;color:#888;">庫存：${i.stock}</div>
+            <button class="add-cart" onclick="addGoodsToCart(${i.id})">加入購物車</button>
+        </div>`;
     });
     document.getElementById("productHtml").innerHTML=html;
 }
@@ -350,7 +361,13 @@ function addGoodsToCart(pid){
     if(idx>-1){
         cartList[idx].num++;
     }else{
-        cartList.push({pid:pid,name:g.name,price:g.price,img:g.img,num:1});
+        cartList.push({
+            pid:pid,
+            name:g.name,
+            price:g.price,
+            img:g.img||DEF_SMALL_IMG,
+            num:1
+        });
     }
     saveCartLocal();
     alert("已加入購物車");
@@ -368,20 +385,23 @@ function renderCartData(){
     let html="";
     let total=0;
     cartList.forEach((item,idx)=>{
-        let imgSrc = item.img ? item.img : 'https://picsum.photos/100/100';
+        let imgSrc = item.img ? item.img : DEF_SMALL_IMG;
         let sub = item.price * item.num;
         total += sub;
-        html += '<div class="cart-item">'
-            + '<img class="cart-img" src="'+imgSrc+'">'
-            + '<div style="flex:1;"><div style="font-weight:bold;">'+item.name+'</div><div style="color:#f53f3f;">NT$'+item.price+'</div></div>'
-            + '<div style="display:flex;gap:8px;align-items:center;">'
-            + '<button class="num-btn" onclick="cartNumMinus('+idx+')">-</button>'
-            + '<span>'+item.num+'</span>'
-            + '<button class="num-btn" onclick="cartNumPlus('+idx+')">+</button>'
-            + '</div>'
-            + '<span style="width:80px;text-align:right;font-weight:bold;">'+sub+'元</span>'
-            + '<i class="fa fa-trash" style="color:#f53f3f;cursor:pointer;" onclick="cartDelete('+idx+')"></i>'
-            + '</div>';
+        html += `<div class="cart-item">
+            <img class="cart-img" src="${imgSrc}" onerror="this.src='${DEF_SMALL_IMG}'">
+            <div style="flex:1;">
+                <div style="font-weight:bold;">${item.name}</div>
+                <div style="color:#f53f3f;">NT$${item.price}</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button class="num-btn" onclick="cartNumMinus(${idx})">-</button>
+                <span>${item.num}</span>
+                <button class="num-btn" onclick="cartNumPlus(${idx})">+</button>
+            </div>
+            <span style="width:80px;text-align:right;font-weight:bold;">${sub}元</span>
+            <i class="fa fa-trash" style="color:#f53f3f;cursor:pointer;" onclick="cartDelete(${idx})"></i>
+        </div>`;
     });
     html += `<div class="total-bar">
                 <div>總金額：<span style="color:#f53f3f;font-size:20px;font-weight:bold;">${total}</span> 元</div>
@@ -417,7 +437,13 @@ async function submitUserOrder(){
     let no="ORD"+Date.now();
     let {data:oRes} = await sb.from("orders").insert({order_no:no,user_id:userInfo.id,total_price:total,status:"pending"}).select();
     let oid=oRes[0].id;
-    let detail=cartList.map(i=>({order_id:oid,product_id:i.pid,product_name:i.name,price:i.price,num:i.num}));
+    let detail=cartList.map(i=>({
+        order_id:oid,
+        product_id:i.pid,
+        product_name:i.name,
+        price:i.price,
+        num:i.num
+    }));
     await sb.from("order_items").insert(detail);
     alert("下單成功："+no);
     cartList=[];
@@ -434,7 +460,18 @@ async function renderAdminProduct(){
     let {data} = await sb.from("products").select("*,categories(name)");
     let html="";
     (data||[]).forEach(i=>{
-        html+='<tr><td><img src="'+(i.img||'')+'" style="width:40px;height:40px;object-fit:cover;"></td><td>'+i.name+'</td><td>'+(i.categories?.name||'未分類')+'</td><td>'+i.price+'</td><td>'+i.stock+'</td><td><button class="edit" onclick="fillEditProduct('+i.id+')">編輯</button><button class="del" onclick="deleteProduct('+i.id+')">刪除</button></td></tr>';
+        let img = i.img || DEF_SMALL_IMG;
+        html+=`<tr>
+            <td><img src="${img}" style="width:40px;height:40px;object-fit:cover;" onerror="this.src='${DEF_SMALL_IMG}'"></td>
+            <td>${i.name}</td>
+            <td>${i.categories?.name||'未分類'}</td>
+            <td>${i.price}</td>
+            <td>${i.stock}</td>
+            <td>
+                <button class="edit" onclick="fillEditProduct(${i.id})">編輯</button>
+                <button class="del" onclick="deleteProduct(${i.id})">刪除</button>
+            </td>
+        </tr>`;
     });
     document.getElementById("adminProductBody").innerHTML=html;
 }
@@ -452,7 +489,7 @@ function openAddProduct(){
 }
 async function fillCateOption(){
     let {data}=await sb.from("categories").select("id,name");
-    let o="";(data||[]).forEach(i=>o+='<option value="'+i.id+'">'+i.name+'</option>');
+    let o="";(data||[]).forEach(i=>o+=`<option value="${i.id}">${i.name}</option>`);
     document.getElementById("prodCateSelect").innerHTML=o;
 }
 
@@ -532,7 +569,13 @@ async function renderAdminCategory(){
     let {data}=await sb.from("categories").select("*");
     let html="";
     (data||[]).forEach(i=>{
-        html+='<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #eee;"><span>'+i.name+'</span><div><button class="edit" onclick="editCategoryItem('+i.id+',\''+i.name+'\')">編輯</button><button class="del" onclick="deleteCategory('+i.id+')">刪除</button></div></div>';
+        html+=`<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #eee;">
+            <span>${i.name}</span>
+            <div>
+                <button class="edit" onclick="editCategoryItem(${i.id},'${i.name}')">編輯</button>
+                <button class="del" onclick="deleteCategory(${i.id})">刪除</button>
+            </div>
+        </div>`;
     });
     document.getElementById("adminCateBody").innerHTML=html;
 }
@@ -551,17 +594,26 @@ async function renderAdminOrderList(){
             if(res.data.user)mail=res.data.user.email;
         }catch(e){}
         let status=o.status==="pending"?"待發貨":"已完成";
-        html+='<tr><td>'+o.order_no+'</td><td>'+mail+'</td><td>'+o.total_price+'元</td><td>'+status+'</td><td>'+new Date(o.created_at).toLocaleString()+'</td><td><button class="edit" onclick="openOrderDetail('+o.id+')">查看明細</button></td></tr>';
+        html+=`<tr>
+            <td>${o.order_no}</td>
+            <td>${mail}</td>
+            <td>${o.total_price}元</td>
+            <td>${status}</td>
+            <td>${new Date(o.created_at).toLocaleString()}</td>
+            <td><button class="edit" onclick="openOrderDetail(${o.id})">查看明細</button></td>
+        </tr>`;
     }
     document.getElementById("adminOrderBody").innerHTML=html;
 }
 async function openOrderDetail(oid){
     let {data:o}=await sb.from("orders").select("*").eq("id",oid).single();
     let {data:d}=await sb.from("order_items").select("*").eq("order_id",oid);
-    let c='<p>訂單號：'+o.order_no+'</p><p>下單時間：'+new Date(o.created_at).toLocaleString()+'</p><p>總金額：'+o.total_price+'元</p><hr><h4>商品明細</h4>';
-    d.forEach(i=>c+='<p>'+i.product_name+' ×'+i.num+' 單價'+i.price+'元</p>');
+    let c=`<p>訂單號：${o.order_no}</p>
+    <p>下單時間：${new Date(o.created_at).toLocaleString()}</p>
+    <p>總金額：${o.total_price}元</p>
+    <hr><h4>商品明細</h4>`;
+    d.forEach(i=>c+=`<p>${i.product_name} ×${i.num} 單價${i.price}元</p>`);
     document.getElementById("orderDetailContent").innerHTML=c;
-    document.getElementById("orderDetailModal").classList.remove("hide");
 }
 
 window.onload=function(){
