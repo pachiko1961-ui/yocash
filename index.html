@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>購物商城系統</title>
+    <title>購物商城完整版</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -37,6 +37,7 @@
         .total-bar{background:#fff;padding:18px;border-radius:6px;margin-top:15px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
         .checkout{background:#165DFF;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;}
         .clear-cart{background:#f53f3f;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;}
+        .force-clear-cart{background:#900;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;margin-bottom:15px;}
         .admin-tab{display:flex;gap:12px;border-bottom:1px solid #eee;padding-bottom:12px;margin:25px 0;}
         .tab-btn{padding:8px 18px;border:none;border-radius:4px;background:#eee;cursor:pointer;}
         .tab-btn.active{background:#165DFF;color:#fff;}
@@ -61,7 +62,7 @@
     <div class="nav-logo" onclick="switchPage('home')"><i class="fa fa-shopping-bag"></i> 購物商城</div>
     <div class="nav-menu">
         <span class="nav-item" onclick="switchPage('home')">首頁</span>
-        <span class="nav-item cart-badge" onclick="goCartPage()">
+        <span class="nav-item cart-badge" onclick="openCart()">
             購物車
             <span class="cart-num" id="cartCount">0</span>
         </span>
@@ -78,14 +79,17 @@
         <h3 style="margin:10px 0;font-size:18px;">全部商品</h3>
         <div class="product-grid" id="productHtml"></div>
     </div>
+
     <div id="page-cart" class="page-view hide">
         <h2 style="margin:20px 0;font-size:22px;">我的購物車</h2>
+        <button class="force-clear-cart" onclick="clearAllLocalCart()">⚠️ 強制清空全部購物車</button>
         <div class="cart-empty" id="cartEmptyTip">
             <i class="fa fa-shopping-cart"></i>
             <p>購物車暫無任何商品</p>
         </div>
-        <div id="cartMainBox" class="hide"></div>
+        <div id="cartListBox"></div>
     </div>
+
     <div id="page-admin" class="page-view hide">
         <div class="admin-tab">
             <button class="tab-btn active" onclick="adminTabChange('goods',this)">商品管理</button>
@@ -211,416 +215,430 @@
 const SUPABASE_URL = "https://zexwhzgxunfnbschkizq.supabase.co";
 const SUPABASE_KEY = "sb_publishable_OPftLOAUJFzwKZ8eK7GIXg_2LEEMMwn";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-let userInfo = null;
-let cartList = [];
-let allProductData = [];
-// 統一使用穩定無404預設圖
 const DEF_IMG = "https://picsum.photos/300/300";
-const DEF_SMALL_IMG = "https://picsum.photos/100/100";
+const DEF_SMALL = "https://picsum.photos/100/100";
 
-// 安全更新數量角標
-function countCartTotal(){
-    const el = document.getElementById("cartCount");
-    if(el){
-        el.innerText = cartList.reduce((sum,item)=>sum + item.num, 0);
+// ========== 購物車完整邏輯 ==========
+function getCartData(){
+    let cart = localStorage.getItem("shopCartData");
+    if(!cart) return [];
+    try{
+        return JSON.parse(cart);
+    }catch{
+        return [];
     }
 }
-
-// 讀取本地購物車資料
-function loadCartFromLocal() {
-    try {
-        let raw = localStorage.getItem("shopCart");
-        cartList = raw ? JSON.parse(raw) : [];
-    } catch (e) {
-        cartList = [];
-        localStorage.setItem("shopCart", JSON.stringify([]));
+function setCartData(arr){
+    localStorage.setItem("shopCartData",JSON.stringify(arr));
+    updateCartNum();
+}
+function updateCartNum(){
+    let list = getCartData();
+    let total = 0;
+    list.forEach(item=>total+=item.num);
+    document.getElementById("cartCount").innerText = total;
+}
+function addToCart(pid,name,price,img){
+    let cart = getCartData();
+    let has = cart.find(v=>v.pid == pid);
+    if(has){
+        has.num += 1;
+    }else{
+        cart.push({
+            pid:pid,
+            name:name,
+            price:Number(price),
+            img:img||DEF_SMALL,
+            num:1
+        });
     }
-    countCartTotal();
+    setCartData(cart);
+    alert("成功加入購物車！");
 }
-
-// 儲存購物車
-function saveCartLocal(){
-    localStorage.setItem("shopCart",JSON.stringify(cartList));
-    countCartTotal();
-}
-
-// 一鍵清空
-function clearAllCart(){
-    if(!confirm("確定清空購物車所有商品？")) return;
-    cartList = [];
-    saveCartLocal();
-    renderCartData();
-}
-
-// 專用跳轉購物車頁面 + 強制載入渲染
-function goCartPage(){
-    document.querySelectorAll(".page-view").forEach(el=>el.classList.add("hide"));
+function openCart(){
+    document.querySelectorAll(".page-view").forEach(p=>p.classList.add("hide"));
     document.getElementById("page-cart").classList.remove("hide");
-    loadCartFromLocal();
-    renderCartData();
+    renderCartPage();
+}
+function renderCartPage(){
+    let cart = getCartData();
+    let emptyTip = document.getElementById("cartEmptyTip");
+    let box = document.getElementById("cartListBox");
+    if(cart.length === 0){
+        emptyTip.style.display = "block";
+        box.innerHTML = "";
+        return;
+    }
+    emptyTip.style.display = "none";
+    let html = "";
+    let allTotal = 0;
+    cart.forEach((item,idx)=>{
+        let sub = item.price * item.num;
+        allTotal += sub;
+        html += `
+        <div class="cart-item">
+            <img class="cart-img" src="${item.img}" onerror="this.src='${DEF_SMALL}'">
+            <div style="flex:1">
+                <div style="font-weight:bold">${item.name}</div>
+                <div style="color:#f53f3f">NT$${item.price}</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+                <button class="num-btn" onclick="cartMinus(${idx})">-</button>
+                <span>${item.num}</span>
+                <button class="num-btn" onclick="cartPlus(${idx})">+</button>
+            </div>
+            <span style="width:80px;text-align:right;font-weight:bold">${sub}元</span>
+            <i class="fa fa-trash" style="color:#f53f3f;cursor:pointer" onclick="cartDel(${idx})"></i>
+        </div>
+        `;
+    });
+    html += `
+    <div class="total-bar">
+        <div>總金額：<span style="color:#f53f3f;font-size:20px;font-weight:bold">${allTotal}</span> 元</div>
+        <div style="display:flex;gap:10px">
+            <button class="clear-cart" onclick="clearAllLocalCart()">清空購物車</button>
+            <button class="checkout" onclick="goCheckout()">結帳下單</button>
+        </div>
+    </div>
+    `;
+    box.innerHTML = html;
+}
+function cartPlus(idx){
+    let cart = getCartData();
+    cart[idx].num++;
+    setCartData(cart);
+    renderCartPage();
+}
+function cartMinus(idx){
+    let cart = getCartData();
+    if(cart[idx].num > 1){
+        cart[idx].num--;
+        setCartData(cart);
+        renderCartPage();
+    }
+}
+function cartDel(idx){
+    let cart = getCartData();
+    cart.splice(idx,1);
+    setCartData(cart);
+    renderCartPage();
+}
+function clearAllLocalCart(){
+    if(!confirm("確定清空所有購物車商品？"))return;
+    setCartData([]);
+    renderCartPage();
 }
 
+// ========== 首頁商品與分類 ==========
+let allGoods = [];
+async function loadCategory(){
+    let {data} = await sb.from("categories").select("*");
+    let h = `<span class="cate-tag" onclick="filterGoods('all')">全部分類</span>`;
+    data.forEach(item=>h+=`<span class="cate-tag" onclick="filterGoods(${item.id})">${item.name}</span>`);
+    document.getElementById("cateHtml").innerHTML = h;
+}
+async function loadGoods(){
+    let {data} = await sb.from("products").select("*,categories(name)");
+    allGoods = data;
+    renderGoods(allGoods);
+}
+function renderGoods(list){
+    let h = "";
+    list.forEach(g=>{
+        let img = g.img || DEF_IMG;
+        h += `
+        <div class="product-card">
+            <img class="product-img" src="${img}" onerror="this.src='${DEF_IMG}'">
+            <div class="product-name">${g.name}</div>
+            <div class="product-cate">${g.categories?.name||"未分類"}</div>
+            <div class="product-price">NT$${g.price}</div>
+            <div style="font-size:13px;color:#888">庫存：${g.stock}</div>
+            <button class="add-cart" onclick="addToCart(${g.id},'${g.name}',${g.price},'${g.img||''}')">加入購物車</button>
+        </div>
+        `;
+    });
+    document.getElementById("productHtml").innerHTML = h;
+}
+function filterGoods(cid){
+    if(cid === "all") return renderGoods(allGoods);
+    renderGoods(allGoods.filter(v=>v.cate_id == cid));
+}
+
+// ========== 頁面切換 ==========
 function switchPage(page){
-    document.querySelectorAll(".page-view").forEach(el=>el.classList.add("hide"));
+    document.querySelectorAll(".page-view").forEach(p=>p.classList.add("hide"));
     document.getElementById("page-"+page).classList.remove("hide");
-
-    if(page === "home"){
-        getCategoryList();
-        getProductList();
+    if(page == "home"){
+        loadCategory();
+        loadGoods();
     }
-    if(page === "admin"){
-        if(!userInfo){alert("請先登入會員");switchPage("home");return;}
-        loadAllAdminData();
+    if(page == "admin"){
+        if(!localStorage.getItem("shopUserInfo")){
+            alert("請先登入會員");
+            switchPage("home");
+            return;
+        }
+        loadAdminAll();
     }
 }
-
-function adminTabChange(type,dom){
+function adminTabChange(t,d){
     document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
-    dom.classList.add("active");
-    document.querySelectorAll(".admin-content").forEach(el=>el.classList.add("hide"));
-    document.getElementById("admin-"+type).classList.remove("hide");
+    d.classList.add("active");
+    document.querySelectorAll(".admin-content").forEach(c=>c.classList.add("hide"));
+    document.getElementById("admin-"+t).classList.remove("hide");
 }
-function openRegModal(){document.getElementById("regModal").classList.remove("hide");}
-function openLoginModal(){document.getElementById("loginModal").classList.remove("hide");}
-function closeModal(id){document.getElementById(id).classList.add("hide");}
 
+// ========== 會員登入註冊 ==========
 async function userRegister(){
     let email = document.getElementById("regEmail").value.trim();
     let pwd = document.getElementById("regPwd").value.trim();
-    if(!email||!pwd){alert("請填寫完整");return;}
-    let {error} = await sb.auth.signUp({email:email,password:pwd});
-    if(error){alert(error.message);return;}
+    if(!email||!pwd)return alert("請填寫完整資訊");
+    let {error} = await sb.auth.signUp({email,password:pwd});
+    if(error)return alert(error.message);
     alert("註冊成功，請登入");
     closeModal("regModal");openLoginModal();
 }
 async function userLogin(){
     let email = document.getElementById("loginEmail").value.trim();
     let pwd = document.getElementById("loginPwd").value.trim();
-    if(!email||!pwd){alert("請輸入帳密");return;}
-    let {data,error} = await sb.auth.signInWithPassword({email:email,password:pwd});
-    if(error){alert(error.message);return;}
-    userInfo = data.user;
-    localStorage.setItem("shopUserInfo",JSON.stringify(userInfo));
-    closeModal("loginModal");refreshUserStatus();
-    alert("登入成功，可進入後台");
+    if(!email||!pwd)return alert("請輸入帳號密碼");
+    let {data,error} = await sb.auth.signInWithPassword({email,password:pwd});
+    if(error)return alert(error.message);
+    localStorage.setItem("shopUserInfo",JSON.stringify(data.user));
+    closeModal("loginModal");
+    refreshUserStatus();
+    alert("登入成功");
 }
 function refreshUserStatus(){
-    let u = JSON.parse(localStorage.getItem("shopUserInfo"));
+    let u = localStorage.getItem("shopUserInfo");
     if(u){
-        userInfo=u;
         document.getElementById("regBtn").style.display="none";
         document.getElementById("loginBtn").style.display="none";
         document.getElementById("userText").style.display="block";
-        document.getElementById("userText").innerText=u.email;
+        document.getElementById("userText").innerText = JSON.parse(u).email;
         document.getElementById("adminEntrance").style.display="block";
     }else{
-        userInfo=null;
         document.getElementById("regBtn").style.display="inline-block";
         document.getElementById("loginBtn").style.display="inline-block";
         document.getElementById("userText").style.display="none";
         document.getElementById("adminEntrance").style.display="none";
     }
-    countCartTotal();
 }
+function openRegModal(){document.getElementById("regModal").classList.remove("hide");}
+function openLoginModal(){document.getElementById("loginModal").classList.remove("hide");}
+function closeModal(id){document.getElementById(id).classList.add("hide");}
 
-async function getCategoryList(){
-    let {data} = await sb.from("categories").select("*");
-    let html='<span class="cate-tag" onclick="filterProduct(\'all\')">全部分類</span>';
-    if(data)data.forEach(i=>html+='<span class="cate-tag" onclick="filterProduct('+i.id+')">'+i.name+'</span>');
-    document.getElementById("cateHtml").innerHTML=html;
-}
-async function getProductList(){
-    let {data} = await sb.from("products").select("*,categories(name)");
-    allProductData=data||[];renderProduct(allProductData);
-}
-function renderProduct(list){
-    let html="";
-    list.forEach(i=>{
-        let img = i.img ? i.img : DEF_IMG;
-        html+=`<div class="product-card">
-            <img class="product-img" src="${img}" onerror="this.src='${DEF_IMG}'">
-            <div class="product-name">${i.name}</div>
-            <div class="product-cate">${i.categories?.name||'未分類'}</div>
-            <div class="product-price">NT$${i.price}</div>
-            <div style="font-size:13px;color:#888;">庫存：${i.stock}</div>
-            <button class="add-cart" onclick="addGoodsToCart(${i.id})">加入購物車</button>
-        </div>`;
+// ========== 後台分類功能：新增/編輯/刪除 ==========
+async function loadAdminCate(){
+    let {data} = await sb.from("categories").select("*").order("id");
+    let html = "";
+    data.forEach(item=>{
+        html += `
+        <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #eee;">
+            <span>${item.name}</span>
+            <div>
+                <button class="edit" onclick="editCate(${item.id},'${item.name}')">編輯</button>
+                <button class="del" onclick="delCate(${item.id})">刪除</button>
+            </div>
+        </div>
+        `;
     });
-    document.getElementById("productHtml").innerHTML=html;
+    document.getElementById("adminCateBody").innerHTML = html;
 }
-function filterProduct(cid){
-    if(cid==="all")return renderProduct(allProductData);
-    renderProduct(allProductData.filter(v=>v.cate_id==cid));
+function openAddCategory(){
+    document.getElementById("cateModalTitle").innerText = "新增商品分類";
+    document.getElementById("editCateId").value = "";
+    document.getElementById("cateNameInput").value = "";
+    document.getElementById("categoryModal").classList.remove("hide");
 }
-
-function addGoodsToCart(pid){
-    let g=allProductData.find(v=>v.id===pid);
-    if(!g)return;
-    let idx=cartList.findIndex(v=>v.pid===pid);
-    if(idx>-1){
-        cartList[idx].num++;
+async function saveCategoryInfo(){
+    let cid = document.getElementById("editCateId").value;
+    let name = document.getElementById("cateNameInput").value.trim();
+    if(!name) return alert("請輸入分類名稱");
+    if(cid){
+        await sb.from("categories").update({name:name}).eq("id",cid);
     }else{
-        cartList.push({
-            pid:pid,
-            name:g.name,
-            price:g.price,
-            img:g.img||DEF_SMALL_IMG,
-            num:1
-        });
+        await sb.from("categories").insert({name:name});
     }
-    saveCartLocal();
-    alert("已加入購物車");
+    closeModal("categoryModal");
+    loadAdminCate();
+    loadCategory();
+    alert("儲存成功");
+}
+function editCate(id,name){
+    document.getElementById("cateModalTitle").innerText = "編輯分類";
+    document.getElementById("editCateId").value = id;
+    document.getElementById("cateNameInput").value = name;
+    document.getElementById("categoryModal").classList.remove("hide");
+}
+async function delCate(id){
+    if(!confirm("確定刪除此分類？"))return;
+    await sb.from("categories").delete().eq("id",id);
+    loadAdminCate();
+    loadCategory();
 }
 
-// 強制渲染購物車介面
-function renderCartData(){
-    if(!cartList || cartList.length<=0){
-        document.getElementById("cartEmptyTip").style.display="block";
-        document.getElementById("cartMainBox").style.display="none";
+// ========== 後台商品功能：新增/編輯/刪除 ==========
+async function loadAdminGoods(){
+    let {data} = await sb.from("products").select("*,categories(name)").order("id");
+    let html = "";
+    data.forEach(item=>{
+        let img = item.img || DEF_SMALL;
+        html += `
+        <tr>
+            <td><img src="${img}" style="width:40px;height:40px;border-radius:4px;" onerror="this.src='${DEF_SMALL}'"></td>
+            <td>${item.name}</td>
+            <td>${item.categories?.name||"未分類"}</td>
+            <td>${item.price}</td>
+            <td>${item.stock}</td>
+            <td>
+                <button class="edit" onclick="editGoods(${item.id})">編輯</button>
+                <button class="del" onclick="delGoods(${item.id})">刪除</button>
+            </td>
+        </tr>
+        `;
+    });
+    document.getElementById("adminProductBody").innerHTML = html;
+}
+async function fillCateSelect(){
+    let {data} = await sb.from("categories").select("*");
+    let opt = "<option value=''>請選擇分類</option>";
+    data.forEach(item=>opt += `<option value="${item.id}">${item.name}</option>`);
+    document.getElementById("prodCateSelect").innerHTML = opt;
+}
+function openAddProduct(){
+    document.getElementById("prodModalTitle").innerText = "新增商品";
+    document.getElementById("editProductId").value = "";
+    document.getElementById("prodName").value = "";
+    document.getElementById("prodPrice").value = "";
+    document.getElementById("prodStock").value = "";
+    document.getElementById("prodImgUrl").value = "";
+    document.getElementById("prodDesc").value = "";
+    fillCateSelect();
+    document.getElementById("productModal").classList.remove("hide");
+}
+async function editGoods(pid){
+    document.getElementById("prodModalTitle").innerText = "編輯商品";
+    let {data} = await sb.from("products").select("*").eq("id",pid).single();
+    document.getElementById("editProductId").value = pid;
+    document.getElementById("prodName").value = data.name;
+    document.getElementById("prodPrice").value = data.price;
+    document.getElementById("prodStock").value = data.stock;
+    document.getElementById("prodImgUrl").value = data.img||"";
+    document.getElementById("prodDesc").value = data.goods_desc||"";
+    await fillCateSelect();
+    document.getElementById("prodCateSelect").value = data.cate_id||"";
+    document.getElementById("productModal").classList.remove("hide");
+}
+async function saveProductInfo(){
+    let pid = document.getElementById("editProductId").value;
+    let name = document.getElementById("prodName").value.trim();
+    let cate_id = document.getElementById("prodCateSelect").value;
+    let price = Number(document.getElementById("prodPrice").value);
+    let stock = Number(document.getElementById("prodStock").value);
+    let img = document.getElementById("prodImgUrl").value.trim();
+    let goods_desc = document.getElementById("prodDesc").value.trim();
+    if(!name||!cate_id||!price||!stock){
+        return alert("請填寫完整商品資訊");
+    }
+    let postData = {
+        name,name,cate_id,price,stock,img,goods_desc
+    };
+    if(pid){
+        await sb.from("products").update(postData).eq("id",pid);
+    }else{
+        await sb.from("products").insert(postData);
+    }
+    closeModal("productModal");
+    loadAdminGoods();
+    loadGoods();
+    alert("商品儲存成功");
+}
+async function delGoods(pid){
+    if(!confirm("確定刪除此商品？"))return;
+    await sb.from("products").delete().eq("id",pid);
+    loadAdminGoods();
+    loadGoods();
+}
+
+// ========== 後台訂單功能 ==========
+async function loadAdminOrder(){
+    let {data} = await sb.from("orders").select("*").order("created_at",{asc:false});
+    let html = "";
+    if(!data.length){
+        document.getElementById("adminOrderBody").innerHTML = `<tr><td colspan="6" style="text-align:center">暫無訂單</td></tr>`;
         return;
     }
-    document.getElementById("cartEmptyTip").style.display="none";
-    document.getElementById("cartMainBox").style.display="block";
-    let html="";
-    let total=0;
-    cartList.forEach((item,idx)=>{
-        let imgSrc = item.img ? item.img : DEF_SMALL_IMG;
-        let sub = item.price * item.num;
-        total += sub;
-        html += `<div class="cart-item">
-            <img class="cart-img" src="${imgSrc}" onerror="this.src='${DEF_SMALL_IMG}'">
-            <div style="flex:1;">
-                <div style="font-weight:bold;">${item.name}</div>
-                <div style="color:#f53f3f;">NT$${item.price}</div>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <button class="num-btn" onclick="cartNumMinus(${idx})">-</button>
-                <span>${item.num}</span>
-                <button class="num-btn" onclick="cartNumPlus(${idx})">+</button>
-            </div>
-            <span style="width:80px;text-align:right;font-weight:bold;">${sub}元</span>
-            <i class="fa fa-trash" style="color:#f53f3f;cursor:pointer;" onclick="cartDelete(${idx})"></i>
-        </div>`;
-    });
-    html += `<div class="total-bar">
-                <div>總金額：<span style="color:#f53f3f;font-size:20px;font-weight:bold;">${total}</span> 元</div>
-                <div style="display:flex;gap:10px;">
-                    <button class="clear-cart" onclick="clearAllCart()">一鍵清空</button>
-                    <button class="checkout" onclick="submitUserOrder()">結帳下單</button>
-                </div>
-             </div>`;
-    document.getElementById("cartMainBox").innerHTML=html;
-}
-
-function cartNumPlus(i){
-    cartList[i].num++;
-    saveCartLocal();
-    renderCartData();
-}
-function cartNumMinus(i){
-    if(cartList[i].num>1){
-        cartList[i].num--;
-        saveCartLocal();
-        renderCartData();
+    for(let o of data){
+        let userInfo = await sb.auth.getUser(o.user_id);
+        let mail = userInfo.data.user?.email||"未知會員";
+        let stText = o.status=="pending"?"待發貨":"已完成";
+        html += `
+        <tr>
+            <td>${o.order_no}</td>
+            <td>${mail}</td>
+            <td>${o.total_price}元</td>
+            <td>${stText}</td>
+            <td>${new Date(o.created_at).toLocaleString()}</td>
+            <td><button class="edit" onclick="showOrderDetail(${o.id})">查看明細</button></td>
+        </tr>
+        `;
     }
+    document.getElementById("adminOrderBody").innerHTML = html;
 }
-function cartDelete(i){
-    cartList.splice(i,1);
-    saveCartLocal();
-    renderCartData();
+async function showOrderDetail(oid){
+    let {data:order} = await sb.from("orders").select("*").eq("id",oid).single();
+    let {data:items} = await sb.from("order_items").select("*").eq("order_id",oid);
+    let content = `<p>訂單編號：${order.order_no}</p><p>訂單金額：${order.total_price} 元</p><hr>`;
+    items.forEach(i=>{
+        content += `<p>${i.product_name}  ×${i.num}  單價：${i.price}</p>`;
+    });
+    document.getElementById("orderDetailContent").innerHTML = content;
+    document.getElementById("orderDetailModal").classList.remove("hide");
 }
 
-async function submitUserOrder(){
-    if(!userInfo){alert("請先登入");return;}
-    let total=cartList.reduce((s,i)=>s+i.price*i.num,0);
-    let no="ORD"+Date.now();
-    let {data:oRes} = await sb.from("orders").insert({order_no:no,user_id:userInfo.id,total_price:total,status:"pending"}).select();
-    let oid=oRes[0].id;
-    let detail=cartList.map(i=>({
+// ========== 結帳功能 ==========
+async function goCheckout(){
+    if(!localStorage.getItem("shopUserInfo"))return alert("請先登入會員");
+    let cart = getCartData();
+    if(cart.length===0)return alert("購物車無商品");
+    let total = cart.reduce((s,i)=>s+i.price*i.num,0);
+    let orderNo = "ORD"+Date.now();
+    let user = JSON.parse(localStorage.getItem("shopUserInfo"));
+    let {data:oRes} = await sb.from("orders").insert({
+        order_no:orderNo,
+        user_id:user.id,
+        total_price:total,
+        status:"pending"
+    }).select();
+    let oid = oRes[0].id;
+    let items = cart.map(i=>({
         order_id:oid,
         product_id:i.pid,
         product_name:i.name,
         price:i.price,
         num:i.num
     }));
-    await sb.from("order_items").insert(detail);
-    alert("下單成功："+no);
-    cartList=[];
-    saveCartLocal();
-    switchPage("home");
+    await sb.from("order_items").insert(items);
+    alert("下單成功！訂單編號："+orderNo);
+    setCartData([]);
+    openCart();
 }
 
-async function loadAllAdminData(){
-    await renderAdminProduct();
-    await renderAdminCategory();
-    await renderAdminOrderList();
-}
-async function renderAdminProduct(){
-    let {data} = await sb.from("products").select("*,categories(name)");
-    let html="";
-    (data||[]).forEach(i=>{
-        let img = i.img || DEF_SMALL_IMG;
-        html+=`<tr>
-            <td><img src="${img}" style="width:40px;height:40px;object-fit:cover;" onerror="this.src='${DEF_SMALL_IMG}'"></td>
-            <td>${i.name}</td>
-            <td>${i.categories?.name||'未分類'}</td>
-            <td>${i.price}</td>
-            <td>${i.stock}</td>
-            <td>
-                <button class="edit" onclick="fillEditProduct(${i.id})">編輯</button>
-                <button class="del" onclick="deleteProduct(${i.id})">刪除</button>
-            </td>
-        </tr>`;
-    });
-    document.getElementById("adminProductBody").innerHTML=html;
+// 後台一次性載入
+async function loadAdminAll(){
+    await loadAdminGoods();
+    await loadAdminCate();
+    await loadAdminOrder();
 }
 
-function openAddProduct(){
-    document.getElementById("prodModalTitle").innerText="新增商品";
-    document.getElementById("editProductId").value="";
-    document.getElementById("prodName").value="";
-    document.getElementById("prodPrice").value="";
-    document.getElementById("prodStock").value="";
-    document.getElementById("prodImgUrl").value="";
-    document.getElementById("prodDesc").value="";
-    fillCateOption();
-    document.getElementById("productModal").classList.remove("hide");
-}
-async function fillCateOption(){
-    let {data}=await sb.from("categories").select("id,name");
-    let o="";(data||[]).forEach(i=>o+=`<option value="${i.id}">${i.name}</option>`);
-    document.getElementById("prodCateSelect").innerHTML=o;
-}
-
-async function fillEditProduct(pid){
-    let {data} = await sb.from("products").select("*").eq("id",pid).single();
-    if(!data)return;
-    document.getElementById("prodModalTitle").innerText="編輯商品";
-    document.getElementById("editProductId").value=data.id;
-    document.getElementById("prodName").value=data.name;
-    document.getElementById("prodPrice").value=data.price;
-    document.getElementById("prodStock").value=data.stock;
-    document.getElementById("prodImgUrl").value=data.img||"";
-    document.getElementById("prodDesc").value=data.goods_desc||"";
-    await fillCateOption();
-    document.getElementById("prodCateSelect").value=data.cate_id;
-    document.getElementById("productModal").classList.remove("hide");
-}
-
-async function saveProductInfo(){
-    let id=document.getElementById("editProductId").value;
-    let d={
-        name:document.getElementById("prodName").value,
-        cate_id:document.getElementById("prodCateSelect").value,
-        price:Number(document.getElementById("prodPrice").value),
-        stock:Number(document.getElementById("prodStock").value),
-        img:document.getElementById("prodImgUrl").value,
-        goods_desc:document.getElementById("prodDesc").value
-    };
-    if(!d.name||!d.price){alert("填寫名稱與售價");return;}
-    if(id){
-        await sb.from("products").update(d).eq("id",id);
-    }else{
-        await sb.from("products").insert(d);
-    }
-    closeModal("productModal");
-    loadAllAdminData();
-    getProductList();
-}
-async function deleteProduct(id){
-    if(!confirm("確定刪除？"))return;
-    await sb.from("products").delete().eq("id",id);
-    loadAllAdminData();
-    getProductList();
-}
-
-function openAddCategory(){
-    document.getElementById("cateModalTitle").innerText="新增分類";
-    document.getElementById("editCateId").value="";
-    document.getElementById("cateNameInput").value="";
-    document.getElementById("categoryModal").classList.remove("hide");
-}
-async function saveCategoryInfo(){
-    let id=document.getElementById("editCateId").value;
-    let n=document.getElementById("cateNameInput").value.trim();
-    if(!n){alert("輸入分類名稱");return;}
-    if(id){
-        await sb.from("categories").update({name:n}).eq("id",id);
-    }else{
-        await sb.from("categories").insert({name:n});
-    }
-    closeModal("categoryModal");
-    loadAllAdminData();
-    getCategoryList();
-}
-async function editCategoryItem(cid,cname){
-    document.getElementById("editCateId").value=cid;
-    document.getElementById("cateNameInput").value=cname;
-    document.getElementById("categoryModal").classList.remove("hide");
-}
-async function deleteCategory(id){
-    if(!confirm("確定刪除？"))return;
-    await sb.from("categories").delete().eq("id",id);
-    loadAllAdminData();
-    getCategoryList();
-}
-async function renderAdminCategory(){
-    let {data}=await sb.from("categories").select("*");
-    let html="";
-    (data||[]).forEach(i=>{
-        html+=`<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #eee;">
-            <span>${i.name}</span>
-            <div>
-                <button class="edit" onclick="editCategoryItem(${i.id},'${i.name}')">編輯</button>
-                <button class="del" onclick="deleteCategory(${i.id})">刪除</button>
-            </div>
-        </div>`;
-    });
-    document.getElementById("adminCateBody").innerHTML=html;
-}
-
-async function renderAdminOrderList(){
-    let {data} = await sb.from("orders").select("*").order("created_at",{asc:false});
-    let html="";
-    if(!data||data.length===0){
-        document.getElementById("adminOrderBody").innerHTML='<tr><td colspan="6" style="text-align:center;">暫無訂單</td></tr>';
-        return;
-    }
-    for(let o of data){
-        let mail="未知會員";
-        try{
-            let res=await sb.auth.getUser(o.user_id);
-            if(res.data.user)mail=res.data.user.email;
-        }catch(e){}
-        let status=o.status==="pending"?"待發貨":"已完成";
-        html+=`<tr>
-            <td>${o.order_no}</td>
-            <td>${mail}</td>
-            <td>${o.total_price}元</td>
-            <td>${status}</td>
-            <td>${new Date(o.created_at).toLocaleString()}</td>
-            <td><button class="edit" onclick="openOrderDetail(${o.id})">查看明細</button></td>
-        </tr>`;
-    }
-    document.getElementById("adminOrderBody").innerHTML=html;
-}
-async function openOrderDetail(oid){
-    let {data:o}=await sb.from("orders").select("*").eq("id",oid).single();
-    let {data:d}=await sb.from("order_items").select("*").eq("order_id",oid);
-    let c=`<p>訂單號：${o.order_no}</p>
-    <p>下單時間：${new Date(o.created_at).toLocaleString()}</p>
-    <p>總金額：${o.total_price}元</p>
-    <hr><h4>商品明細</h4>`;
-    d.forEach(i=>c+=`<p>${i.product_name} ×${i.num} 單價${i.price}元</p>`);
-    document.getElementById("orderDetailContent").innerHTML=c;
-}
-
-window.onload=function(){
-    loadCartFromLocal();
+// 初始載入
+window.onload = function(){
+    updateCartNum();
     refreshUserStatus();
     switchPage("home");
-};
+}
 </script>
+
 </body>
 </html>
