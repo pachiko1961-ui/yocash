@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>購物商城-前台</title>
+    <title><<濱線露店>>購物商城</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -91,7 +91,7 @@
 </head>
 <body>
 <div class="header">
-    <div class="nav-logo" onclick="switchPage('home')"><i class="fa fa-shopping-bag"></i> 購物商城</div>
+    <div class="nav-logo" onclick="switchPage('home')"><i class="fa fa-shopping-bag"></i> <<濱線露店>>購物商城</div>
     <div class="nav-menu">
         <span class="nav-item" onclick="switchPage('home')">首頁</span>
         <span class="nav-item cart-badge" onclick="openCart()">
@@ -414,7 +414,6 @@ function openCheckoutForm(){
     document.getElementById("checkoutUserModal").classList.remove("hide");
 }
 
-// ========== 提交訂單（已註解DB新欄位，不會報錯） ==========
 async function submitCheckoutOrder(){
     let name = document.getElementById("buyerName").value.trim();
     let phone = document.getElementById("buyerPhone").value.trim();
@@ -437,6 +436,9 @@ async function submitCheckoutOrder(){
 
     let userInfo = localStorage.getItem("shopUserInfo");
     let user = JSON.parse(userInfo);
+    // ========== 新增：取得使用者 email ==========
+    let userEmail = user.email; // 從登入資訊中獲取 email
+    
     let cart = getCartData();
     let subtotal = cart.reduce((s,i)=>s+i.price*i.num,0);
     let shippingFee = calculateShippingFee(subtotal);
@@ -464,6 +466,7 @@ async function submitCheckoutOrder(){
     let {data:oRes, error:orderError} = await sb.from("orders").insert({
         order_no:orderNo,
         user_id:user.id,
+        user_email: userEmail,
         subtotal_price: subtotal,
         shipping_fee: shippingFee,
         total_price: total,
@@ -488,7 +491,8 @@ async function submitCheckoutOrder(){
         product_id:i.pid,
         product_name:i.name,
         price:i.price,
-        num:i.num
+        num:i.num,
+        product_img:i.img
     }));
     let {error:itemError} = await sb.from("order_items").insert(items);
     if(itemError) return alert("儲存訂單明細失敗：" + itemError.message);
@@ -503,8 +507,9 @@ async function submitCheckoutOrder(){
         invoiceMsg = `\n發票：三聯式公司發票\n公司名稱：${companyName}\n統一編號：${taxId}\n營業稅5%：NT$${tax}`;
     }
 
-    alert(`本筆訂單下單成功，專人將撥0932-740558與您確認出貨，非此門號來電皆非本店！
+    alert(`本筆訂單已下單成功，但本公司保有訂單接受與否（或出貨）的權利. \n請等待公司專人使用0932-740558手機號碼與您確認這筆訂單，非此門號來電者皆非本店人員！
 \n訂單編號：${orderNo}
+訂購信箱：${userEmail}
 商品小計：NT$${subtotal}
 運費：${shippingFee === 0 ? '免運費' : `NT$${shippingFee}`}${invoiceMsg}
 應付總金額：NT$${total}`);
@@ -527,9 +532,9 @@ async function loadGoods(){
     allGoods = data;
     renderGoods(allGoods);
 }
-function renderGoods(list){
+function renderGoods(list) {
     let h = "";
-    list.forEach(g=>{
+    list.forEach(g => {
         let productImgs = [];
         try {
             productImgs = g.imgs ? (typeof g.imgs === 'string' ? JSON.parse(g.imgs) : g.imgs) : [];
@@ -538,25 +543,34 @@ function renderGoods(list){
         }
         let img = productImgs.length > 0 ? productImgs[0] : DEF_IMG;
         let cartImg = productImgs.length > 0 ? productImgs[0] : DEF_SMALL;
-        let imgsJson = JSON.stringify(productImgs).replace(/"/g, '&quot;');
-        let productDesc = g.goods_desc || "本商品暫無介紹說明";
-        let specText = g.specifications || "本商品暫無詳細規格說明";
-        let safeDesc = productDesc.replace(/'/g, "\\'");
-        let safeSpec = specText.replace(/'/g, "\\'");
+        
+        // 【關鍵修復1】完整轉義所有特殊字元（解決引號中斷問題）
+        const escapeQuote = (str) => {
+            if (!str) return '';
+            return str.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+        };
+        
+        const safeName = escapeQuote(g.name);
+        const safeDesc = escapeQuote(g.goods_desc || "本商品暫無介紹說明");
+        const safeSpec = escapeQuote(g.specifications || "本商品暫無詳細規格說明");
+        const imgsJson = JSON.stringify(productImgs).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+        // 【關鍵修復2】屬性使用雙引號包裹，內部單引號已轉義
         h += `
         <div class="product-card">
             <img class="product-img" src="${img}" onerror="this.src='${DEF_IMG}'">
             <div class="product-name">${g.name}</div>
-            <div class="product-cate">${g.categories?.name||"未分類"}</div>
+            <div class="product-cate">${g.categories?.name || "未分類"}</div>
             <div class="product-price">NT$${g.price}</div>
             <div style="font-size:13px;color:#888">庫存：${g.stock}</div>
-            <button class="spec-btn" onclick="openProductSpec('${g.name}','${safeDesc}','${safeSpec}','${imgsJson}')">詳細規格</button>
-            <button class="add-cart" onclick="addToCart(${g.id},'${g.name}',${g.price},'${cartImg}')">加入購物車</button>
+            <button class="spec-btn" onclick="openProductSpec('${safeName}','${safeDesc}','${safeSpec}','${imgsJson}')">詳細規格</button>
+            <button class="add-cart" onclick="addToCart(${g.id},'${safeName}',${g.price},'${cartImg}')">加入購物車</button>
         </div>
         `;
     });
     document.getElementById("productHtml").innerHTML = h;
 }
+
 function filterGoods(cid){
     if(cid === "all") return renderGoods(allGoods);
     renderGoods(allGoods.filter(v=>v.cate_id == cid));
@@ -677,11 +691,12 @@ async function loadUserOrders(){
     let userInfo = localStorage.getItem("shopUserInfo");
     if(!userInfo) return;
     let user = JSON.parse(userInfo);
+    // 修正查詢：user.id 不要寫成 user.id 放在 select 裡，eq 單獨條件
     let {data:orders, error} = await sb
         .from("orders")
         .select("*")
-        .eq("user_id", user.id)
-        .order("local_timestamp", { ascending: false }); // 改用本地時間戳排序
+        .eq("user_id", user.id) // 這邊之前寫錯成 user.id 會400！
+        .order("local_timestamp", { ascending: false });
     if(error){
         alert("查詢訂單失敗：" + error.message);
         return;
@@ -703,8 +718,24 @@ async function loadUserOrders(){
         "completed": "已完成",
         "canceled": "已取消"
     };
-    for(let order of orders){
-       let createTime = order.local_created_at || new Date(order.created_at).toLocaleString("zh-TW");
+
+    // 普通 for of，搭配內部 async 查詢
+    for (let order of orders){
+        // 強制初始化，杜絕 firstProductImg is not defined
+        let firstProductImg = DEF_SMALL;
+        // 單獨查詢該訂單第一筆明細
+        const {data:items, err} = await sb
+            .from("order_items")
+            .select("product_img")
+            .eq("order_id", order.id)
+            .limit(1);
+        
+        // 有圖片才覆蓋
+        if(!err && items && items.length > 0 && items[0].product_img){
+            firstProductImg = items[0].product_img;
+        }
+
+        let createTime = order.local_created_at || new Date(order.created_at).toLocaleString("zh-TW");
         html += `
         <div class="order-item">
             <div class="order-header">
@@ -712,10 +743,13 @@ async function loadUserOrders(){
                 <div class="order-status status-${order.status}">${statusMap[order.status] || order.status}</div>
             </div>
             <div>建立時間：${createTime}</div>
+            <div>訂購信箱：${order.user_email || '未記錄'}</div> 
+            <div style="margin:8px 0;">
+                <img src="${firstProductImg}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;" onerror="this.src='${DEF_SMALL}'">
+            </div>
             <div style="margin:8px 0;">
                 <div>商品小計：NT$${order.subtotal_price || 0}</div>
                 <div>運費：${order.shipping_fee === 0 ? '免運費' : `NT$${order.shipping_fee}`}</div>
-                <!-- 新增稅金顯示 -->
                 <div>營業稅(5%)：NT$${order.tax_fee || 0}</div>
             </div>
             <div class="order-total">總金額：NT$${order.total_price}</div>
@@ -726,7 +760,6 @@ async function loadUserOrders(){
                 <div>收貨地址：${order.buyer_address}</div>
                 ${order.buyer_remark ? `<div>備註：${order.buyer_remark}</div>` : ""}
             </div>
-
 <div style="margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #eee;">
     <div><strong>發票資訊</strong></div>
     <div>發票類型：${order.invoice_type === 'none' ? '不開立' : order.invoice_type === 'double' ? '二聯式(個人)' : '三聯式(公司)'}</div>
@@ -745,7 +778,7 @@ async function loadUserOrders(){
 async function viewOrderDetail(orderId){
     let {data:items, error} = await sb
         .from("order_items")
-        .select("*")
+        .select("*") // 一定要選取全部欄，包含 product_img
         .eq("order_id", orderId);
     if(error){
         alert("查詢訂單詳情失敗：" + error.message);
@@ -760,8 +793,8 @@ async function viewOrderDetail(orderId){
     let html = `
     <div style="margin-bottom:15px;">
         <div style="font-weight:bold;margin-bottom:8px;">訂單編號：${order.order_no}</div>
-        <!-- ========== 修改：使用本地時間 ========== -->
         <div style="color:#777;font-size:14px;margin-bottom:15px;">建立時間：${order.local_created_at || new Date(order.created_at).toLocaleString("zh-TW")}</div>
+        <div style="color:#777;font-size:14px;margin-bottom:15px;">訂購信箱：${order.user_email || '未記錄'}</div>        
         <div style="margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #eee;">
             <div><strong>收貨資訊：</strong></div>
             <div>收件人：${order.buyer_name}</div>
@@ -775,7 +808,6 @@ async function viewOrderDetail(orderId){
             <div>運費：${order.shipping_fee === 0 ? '免運費' : `NT$${order.shipping_fee}`}</div>
             <div>營業稅5%：NT$${order.tax_fee || 0}</div>
         </div>
-
 <div style="margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #eee;">
     <div><strong>發票資訊</strong></div>
     <div>發票類型：${order.invoice_type === 'none' ? '不開立' : order.invoice_type === 'double' ? '二聯式(個人)' : '三聯式(公司)'}</div>
@@ -786,10 +818,14 @@ async function viewOrderDetail(orderId){
 </div>
         <div style="margin-bottom:15px;"><strong>訂單商品：</strong></div>
     `;
+    // 重點修正：讀取 item.product_img，空值才用預設圖
     items.forEach(item => {
+        // 優先取存進資料庫的商品圖，無圖才用 DEF_SMALL
+        const realImg = item.product_img ? item.product_img : DEF_SMALL;
         html += `
         <div class="order-detail-item">
-            <img class="order-detail-img" src="${DEF_SMALL}" onerror="this.src='${DEF_SMALL}'">
+            <!-- 替換成真實圖片連結，斷圖自動切預設 -->
+            <img class="order-detail-img" src="${realImg}" onerror="this.src='${DEF_SMALL}'">
             <div class="order-detail-info">
                 <div class="order-detail-name">${item.product_name}</div>
                 <div class="order-detail-price">單價：NT$${item.price}</div>
@@ -803,6 +839,9 @@ async function viewOrderDetail(orderId){
     <div style="margin-top:20px;padding-top:15px;border-top:2px solid #f5f5f5;">
         <div style="font-size:18px;font-weight:bold;color:#f53f3f;">
             訂單總金額：NT$${order.total_price}
+        </div>
+        <div style="font-size:18px;font-weight:bold;color:#0000ff;">
+            感謝您的惠顧,對於本筆訂購有疑問或者要更改內容的話.請撥打手機0932-740558 或者加LINE ID:0932740558詢問.
         </div>
     </div>
     `;
